@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CamVisit : visites touristiques au Cameroun</title>
+  <style>
+    :root { --vert: #007a5e; --rouge: #ce1126; --jaune: #fcd116; --fond: #f6f8f5; --texte: #1b2a22; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--fond); color: var(--texte); }
+    .drapeau { height: 6px; background: linear-gradient(90deg, var(--vert) 33%, var(--rouge) 33% 66%, var(--jaune) 66%); }
+    main { max-width: 980px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    h1 { margin: 0; color: var(--vert); }
+    h2 { margin: 2rem 0 .8rem; font-size: 1.2rem; }
+    .etat { font-size: .85rem; color: #555; margin: .2rem 0 1.5rem; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .8rem; margin-bottom: 1.5rem; }
+    .tuile { background: #fff; border-radius: 8px; padding: .8rem 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .tuile strong { display: block; font-size: 1.5rem; color: var(--vert); }
+    .tuile span { font-size: .8rem; color: #555; }
+    form, .filtres { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .8rem; background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    label { display: flex; flex-direction: column; font-size: .85rem; gap: .25rem; }
+    input, select, button { padding: .5rem; font-size: 1rem; }
+    button { cursor: pointer; background: var(--vert); color: #fff; border: 0; border-radius: 6px; align-self: end; }
+    button.secondaire { background: #666; }
+    button.suppr { background: var(--rouge); padding: .3rem .6rem; font-size: .85rem; }
+    #resume { margin: .8rem 0 0; padding: .7rem 1rem; background: #fff8d6; border-left: 4px solid var(--jaune); border-radius: 4px; font-size: .9rem; }
+    #message { min-height: 1.4rem; margin: .8rem 0; font-weight: 600; }
+    .ok { color: var(--vert); } .ko { color: var(--rouge); }
+    .tableau { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid #e3e8e3; white-space: nowrap; }
+    th { background: var(--vert); color: #fff; }
+    .badge { font-size: .75rem; background: var(--jaune); padding: .1rem .4rem; border-radius: 4px; }
+    code { background: #eef3ee; padding: .1rem .35rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="drapeau"></div>
+  <main>
+    <h1>CamVisit</h1>
+    <div class="etat" id="etat">Vérification…</div>
+
+    <div class="stats">
+      <div class="tuile"><strong id="stat-resa">0</strong><span>réservations</span></div>
+      <div class="tuile"><strong id="stat-pers">0</strong><span>visiteurs attendus</span></div>
+      <div class="tuile"><strong id="stat-recettes">0</strong><span>recettes estimées</span></div>
+      <div class="tuile"><strong id="stat-top">-</strong><span>site le plus demandé</span></div>
+    </div>
+
+    <h2>Réserver une visite</h2>
+    <form id="formulaire">
+      <label>Site touristique <select id="site" required></select></label>
+      <label>Date <input type="date" id="jour" required></label>
+      <label>Heure <input type="time" id="heure" min="06:00" max="17:00" value="09:00" required></label>
+      <label>Nombre de personnes <input type="number" id="personnes" min="1" max="50" value="2" required></label>
+      <button type="submit">Réserver</button>
+    </form>
+    <div id="resume"></div>
+    <div id="message"></div>
+
+    <h2>Réservations</h2>
+    <div class="filtres">
+      <label>Filtrer par site <select id="filtre-site"><option value="">Tous les sites</option></select></label>
+      <label>Filtrer par date <input type="date" id="filtre-jour"></label>
+      <button type="button" class="secondaire" id="reinitialiser">Réinitialiser</button>
+    </div>
+    <div class="tableau">
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Site</th><th>Date</th><th>Heure</th><th>Pers.</th><th>Total</th><th></th></tr>
+        </thead>
+        <tbody id="liste"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let sites = [];
+
+    const fcfa = (n) => new Intl.NumberFormat("fr-FR").format(n) + "\u00a0FCFA";
+    const dateFr = (iso) => iso.split("-").reverse().join("/");
+    const aujourdhui = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Africa/Douala" });
+
+    function afficher(texte, ok) {
+      $("message").textContent = texte;
+      $("message").className = ok ? "ok" : "ko";
+    }
+
+    async function etat() {
+      try {
+        const s = await (await fetch("/api/sante")).json();
+        $("etat").textContent = "API : " + s.api + " · Base : " + s.base + " · Conteneur : " + s.conteneur;
+      } catch {
+        $("etat").textContent = "API injoignable";
+      }
+    }
+
+    async function chargerSites() {
+      const rep = await fetch("/api/sites");
+      if (!rep.ok) return false;
+      sites = await rep.json();
+      for (const s of sites) {
+        $("site").add(new Option(s.nom, s.id));
+        $("filtre-site").add(new Option(s.nom, s.id));
+      }
+      return true;
+    }
+
+    async function majResume() {
+      const site = sites.find((s) => s.id === Number($("site").value));
+      if (!site) return;
+      const n = Number($("personnes").value) || 0;
+      let texte = site.region + " : " + site.description +
+        " Tarif : " + fcfa(site.prix_fcfa) + " par personne. Total estimé : " + fcfa(n * site.prix_fcfa) + ".";
+      const jour = $("jour").value;
+      if (jour) {
+        const rep = await fetch("/api/sites/" + site.id + "/disponibilite?jour=" + jour);
+        if (rep.ok) {
+          const d = await rep.json();
+          texte += " Places restantes ce jour : " + d.restantes + " sur " + d.capacite + ".";
+        }
+      }
+      $("resume").textContent = texte;
+    }
+
+    async function chargerStats() {
+      const rep = await fetch("/api/stats");
+      if (!rep.ok) return;
+      const s = await rep.json();
+      $("stat-resa").textContent = s.reservations;
+      $("stat-pers").textContent = s.personnes;
+      $("stat-recettes").textContent = fcfa(s.recettes_fcfa);
+      const top = s.par_site[0];
+      $("stat-top").textContent = top && top.personnes > 0 ? top.lieu : "-";
+    }
+
+    async function chargerListe() {
+      const params = new URLSearchParams();
+      if ($("filtre-site").value) params.set("site", $("filtre-site").value);
+      if ($("filtre-jour").value) params.set("jour", $("filtre-jour").value);
+      const rep = await fetch("/api/reservations?" + params);
+      const corps = $("liste");
+      corps.innerHTML = "";
+      if (!rep.ok) { afficher("Base non connectée, réessaie dans un instant.", false); return; }
+
+      for (const r of await rep.json()) {
+        const tr = document.createElement("tr");
+        const cellules = [r.code, r.lieu, dateFr(r.jour), r.heure, r.personnes, fcfa(r.total_fcfa)];
+        for (const v of cellules) {
+          const td = document.createElement("td");
+          td.textContent = v;
+          tr.appendChild(td);
+        }
+        const action = document.createElement("td");
+        if (r.protegee) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "exemple";
+          action.appendChild(badge);
+        } else {
+          const bouton = document.createElement("button");
+          bouton.className = "suppr";
+          bouton.textContent = "Supprimer";
+          bouton.onclick = async () => {
+            if (!confirm("Supprimer la réservation " + r.code + " ?")) return;
+            await fetch("/api/reservations/" + r.id, { method: "DELETE" });
+            rafraichir();
+          };
+          action.appendChild(bouton);
+        }
+        tr.appendChild(action);
+        corps.appendChild(tr);
+      }
+    }
+
+    function rafraichir() {
+      chargerListe();
+      chargerStats();
+      majResume();
+    }
+
+    $("formulaire").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const rep = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          site_id: Number($("site").value),
+          jour: $("jour").value,
+          heure: $("heure").value,
+          personnes: Number($("personnes").value),
+        }),
+      });
+      const donnees = await rep.json();
+      if (rep.ok) {
+        afficher("Réservation enregistrée. Code : " + donnees.code + " (" + fcfa(donnees.total_fcfa) + ")", true);
+        rafraichir();
+      } else {
+        afficher(donnees.erreur, false);
+      }
+    });
+
+    for (const id of ["site", "jour", "personnes"]) $(id).addEventListener("input", majResume);
+    $("filtre-site").addEventListener("change", chargerListe);
+    $("filtre-jour").addEventListener("change", chargerListe);
+    $("reinitialiser").addEventListener("click", () => {
+      $("filtre-site").value = "";
+      $("filtre-jour").value = "";
+      chargerListe();
+    });
+
+    async function demarrer() {
+      $("jour").min = aujourdhui();
+      $("jour").value = aujourdhui();
+      etat();
+      // La base peut mettre quelques secondes à démarrer : on réessaie.
+      let ok = await chargerSites();
+      for (let i = 0; !ok && i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        ok = await chargerSites();
+      }
+      etat();
+      rafraichir();
+    }
+    demarrer();
+  </script>
+</body>
+</html>
