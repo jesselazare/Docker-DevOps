@@ -37,7 +37,7 @@ Stack : Node.js 24 (Express), PostgreSQL 18, Docker Compose.
    docker compose up --build
    ```
    (ajouter `-d` pour garder la main sur le terminal)
-4. Ouvrir http://localhost:3000
+4. Ouvrir http://localhost:3001
 
 Au premier démarrage, les tables sont créées et les 5 exemples ajoutés.
 Pendant que la base démarre, la page peut afficher « Base non connectée » quelques secondes : elle se met à jour toute seule.
