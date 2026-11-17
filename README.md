@@ -24,7 +24,7 @@ Stack : Node.js 24 (Express), PostgreSQL 18, Docker Compose.
 
 1. Cloner le dépôt :
    ```bash
-   https://github.com/jesselazare/Docker-DevOps/
+   https://github.com/jesselazare/Docker-DevOps.git
    cd docker-DevOps
    ```
 2. Créer le fichier `.env` :
